@@ -1,0 +1,199 @@
+#include <Servo.h>
+// Pinii motor 1
+#define mpin00 5
+#define mpin01 6
+int loc=0;
+int md=0;
+int power=0;
+int secondcar=0;
+int time0,time1=0;
+int lw=0;
+int rw=0;
+int dparcare=0;
+int distance=0; // distanta returnata de functia distanceW
+int duration=0;
+int f1=1;
+#define trigPin 9
+#define echoPin 10
+int sensorValue = 0;
+int initiald=-50000;
+int stop1=0;  // semnal de stop total(in caz de esec/succes)
+int sensorPin = 13;
+// Pinii motor 2
+#define mpin10 3
+#define mpin11 11
+Servo srv;
+void setup() {
+ // configurarea pinilor motor ca iesire, initial valoare 0
+ digitalWrite(mpin00, 0);
+ digitalWrite(mpin01, 0);
+ Serial.begin(9600);
+ digitalWrite(mpin10, 0);
+ digitalWrite(mpin11, 0);
+ pinMode (mpin00, OUTPUT);
+ pinMode (mpin01, OUTPUT);
+ pinMode (mpin10, OUTPUT);
+ pinMode (mpin11, OUTPUT);
+ pinMode(sensorPin,INPUT);
+ pinMode(trigPin,OUTPUT);
+ pinMode(echoPin,INPUT);
+ // pin LED
+ pinMode(13, INPUT);
+}
+// Funcție pentru controlul unui motor
+// Intrare: pinii m1 și m2, direcția și viteza
+void StartMotor (int m1, int m2, int forward, int speed)
+{
+
+ if (speed==0) // oprire
+ {
+ digitalWrite(m1, 0);
+ digitalWrite(m2, 0);
+ }
+ else
+ {
+ if (forward)
+ {
+ digitalWrite(m2, 0);
+ analogWrite(m1, speed); // folosire PWM
+ }
+ else
+ {
+ digitalWrite(m1, 0);
+ analogWrite(m2, speed);
+ }
+ }
+}
+// Funcție de siguranță
+// Execută oprire motoare, urmată de delay
+void delayStopped(int ms)
+{
+ StartMotor (mpin00, mpin01, 0, 0);
+ StartMotor (mpin10, mpin11, 0, 0);
+ delay(ms);
+}
+// Utilizare servo
+// Poziționare spre dreapta
+void playWithServo(int pin)
+{
+ srv.attach(pin);
+ srv.write(0);
+ delay(1000);
+ srv.detach();
+}
+void distanceW() {
+  // Clears the trigPin
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  
+  // Sets the trigPin on HIGH state for 10 micro seconds
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+  
+  // Reads the echoPin, returns the sound wave travel time in microseconds
+  duration = pulseIn(echoPin, HIGH);
+  
+  // Calculating the distance
+  distance= duration*0.034/2;
+  
+  // Prints the distance on the Serial Monitor
+  Serial.print("Distance: ");
+  Serial.println(distance);
+}
+
+void loop() {
+
+ 
+ if (stop1==0) //daca demnalul de stop nu e activ
+ {
+  if (f1==1)	//faza 1 (setam servoul spre dreapta si luam valori de distanta pana cand vin 2 consecutive (=initiald) si pornim mototarele ca sa mergem inainte)
+  {
+ playWithServo(8);
+ delay(2000);
+ while (distance!=initiald)
+  {
+    initiald=distance;
+    distanceW();
+    delay(100);
+  }
+  
+ Serial.print("Initiald: ");
+ Serial.println(initiald);
+ // Acum se pornesc motoarele DC
+ StartMotor (mpin00, mpin01, 1, 200);
+ StartMotor (mpin10, mpin11, 1, 200);
+ f1=0;									//faza 1 este gata =))
+ Serial.println("Calculam niste distante:");
+  }
+  while (secondcar==0)			//cat timp nu am ajuns la a doua masina(second car==0) luam distanta de 3 ori la delay de 50 si facem media aritmetica
+  {
+    
+    Serial.println("{");
+    md=0;
+    distanceW();
+    md+=distance;
+    delay(50);
+    distanceW();
+    md+=distance;
+    delay(50);
+    distanceW();
+    md+=distance;
+    md/=3;
+    Serial.println("}");
+    if (md-initiald>15)			//verificam daca distanta curenta ii cel putin cu 15 UniTAtI dE dIStAnTa mai mare decat dist initiala( daca da atunci am trecut de prima masina si am dat de loc de parcare)
+    {
+      loc=1;					//incepe locul de parcare
+      Serial.println("Incepe locul de parcare");
+    }
+    if (loc==1)					//daca suntem in dreptul locului de parcare
+    {
+      time0=millis();			//luam timpul la inceputul locului
+      distanceW();				
+      while (abs(distance-initiald)>7)	//tot luam distanta si verificam daca nu cumva am ajuns la a doua masina
+      {
+        distanceW();
+        delay(50);
+        }
+      time1=millis();					//aici deja suntem la a doua masina, luam timpul din nou
+      dparcare=time1-time0;				//distanta locului de parcare=timpul1-timpul0 cu viteza la care se deplaseaza masina
+      
+      secondcar=1;						//semnal ca am ajuns la a doua masina
+      Serial.println("Am ajuns la a doua masina");
+      Serial.print("Distanta locului de parcare: ");
+      Serial.print(dparcare);
+      Serial.println(" milisecunde la viteza 45");
+      if (dparcare < 2000)				//vedem daca este destul spatiu in locul de parcare
+      {
+        Serial.println("NU-I DESTUL LOC !!! RENUNTAM");
+        stop1=1;
+        }
+        else
+        {Serial.println("E DESTUL LOC INCEPEM PARCAREA !!");}
+      }
+    
+     delay(100);
+    }
+    if (secondcar==1 && stop1==0)		//daca este destul spatiu atunci facem niste miscari hardcodate care o sa faca parcarea laterala
+    {
+      delay(800);//sa treaca de loc cu totul
+      power=200;
+      delayStopped(2000);
+      StartMotor (mpin00, mpin01, 0, power);
+      StartMotor (mpin10, mpin11, 0, 0);
+      delay(500);
+      delayStopped(200);
+      StartMotor (mpin00, mpin01, 0, power);
+      StartMotor (mpin10, mpin11, 0, power);
+      delay(500);
+      delayStopped(500);
+      StartMotor (mpin00, mpin01, 0, 0);
+      StartMotor (mpin10, mpin11, 0, power);
+      delay(500);
+      delayStopped(10000);
+      stop1=1;
+      Serial.println("AM PARCAT !!!");
+    }
+ 
+ }
+}
